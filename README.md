@@ -1,36 +1,34 @@
 # AI HTML Make
 
-A mobile-friendly, browser-based HTML/CSS/JavaScript project editor with a continuous Groq AI builder.
+A **native Android application** built with Java. AI HTML Make is a Groq-powered website project builder: create projects, manage HTML/CSS/JavaScript files, chat continuously with AI to create or update files, preview `index.html`, and export the project as a ZIP.
 
-## Features
+## Android project
 
-- Home page with local projects
-- Project file browser and built-in text editor
-- Continuous AI chat that can create and update multiple files
-- Live preview using the project's `index.html`
-- Groq API key saved locally in the browser
-- Project data stored in browser local storage
-- Responsive layout for mobile screens
+- Android application ID: `com.azuki.htmlmake`
+- Language: Java
+- Minimum Android: API 23 (Android 6.0)
+- Compile SDK: 35
+- No third-party Android libraries required
 
-## Run
+Open this repository as an Android Gradle project in Android Studio or CodeAssist and build the APK.
 
-This is a static web app. Open `index.html` in a browser or deploy the repository using GitHub Pages or another static host. No build step or package installation is required.
+## App sections
 
-## Connect Groq
+- **Home:** create and switch between local projects.
+- **Files:** browse, create, edit, save, and export project files.
+- **AI Chat:** continuous Groq conversation that can create and update complete files. Progress appears in chat, for example `index.html created...` and `style.css updated...`.
+- **Preview:** render the project's `index.html` in an Android WebView, with the common root `style.css` and `app.js` files injected.
 
-1. Open AI HTML Make.
-2. Tap the settings icon in the top-right corner.
-3. Enter your own Groq API key.
-4. Open a project and ask AI to create or edit your website.
+## Groq setup
 
-The app uses the Groq OpenAI-compatible chat completions endpoint and the `openai/gpt-oss-120b` model.
+Open the settings button in the app and enter your own Groq API key. The key is stored in app-private SharedPreferences on the device. The app calls the Groq chat completions API using `openai/gpt-oss-120b`.
 
-**Security:** The API key is saved in browser local storage and sent directly from your browser to Groq. Do not use this setup to distribute an app with a shared secret. For a public multi-user service, put the API request behind a server-side endpoint and keep the key in a server environment variable.
+Do not commit API keys or distribute an APK containing a shared private key. A public multi-user release should use a backend that keeps the Groq key server-side.
 
-## Project data
+## Project storage
 
-Projects and chat history are stored in this browser's local storage. Clearing browser site data can erase them. Export or copy important files before clearing storage.
+Projects, files, and AI chat history are stored locally in the app's private preferences. Export project ZIPs regularly if you need a backup.
 
-## Preview note
+## Build status
 
-The preview runs inside a sandboxed iframe. External assets referenced by URLs still need an internet connection. The current preview automatically inlines the common root files `style.css`, `styles.css`, `app.js`, and `script.js`.
+The native Android source has been committed. A successful Gradle build and device runtime test have not yet been verified.
