@@ -128,6 +128,7 @@ public class MainActivity extends Activity {
     }
 
     private void showPage(String page) {
+        if("files".equals(currentPage)) saveEditorIfNeeded();
         currentPage=page; content.removeAllViews();
         projectTitle.setText(project==null?"No project":"PROJECT  /  "+project.optString("name"));
         if("home".equals(page)) buildHome();
@@ -210,7 +211,7 @@ public class MainActivity extends Activity {
         Button clear=button("New chat"); clear.setOnClickListener(v->{chatMessages.clear();addChatBubble("assistant","New chat started. What should we build?");}); top.addView(clear); content.addView(top);
         chatScroll=new ScrollView(this); chatList=vertical(); chatList.setPadding(dp(12),dp(5),dp(12),dp(8)); chatScroll.addView(chatList);
         content.addView(chatScroll,new LinearLayout.LayoutParams(-1,0,1));
-        if(chatMessages.isEmpty()) addChatBubble("assistant","Welcome to HTML Make! I can create and edit your project's HTML, CSS and JavaScript files. What would you like to build?");
+
         LinearLayout compose=vertical(); compose.setPadding(dp(11),dp(9),dp(11),dp(10)); compose.setBackgroundColor(0xFF121922);
         composer=new EditText(this); composer.setTextColor(Color.WHITE); composer.setHintTextColor(0xFF8091A0); composer.setHint("Describe a website or feature...");
         composer.setTextSize(14); composer.setMinHeight(dp(48)); composer.setMaxLines(4); composer.setPadding(dp(13),dp(9),dp(13),dp(9)); composer.setBackground(bg(0xFF253340,18));
@@ -223,6 +224,7 @@ public class MainActivity extends Activity {
 
     private void renderChatHistory() {
         if(chatList==null)return; chatList.removeAllViews();
+        if(chatMessages.isEmpty()) { addChatBubble("assistant","Welcome to HTML Make! I can create and edit your project HTML, CSS and JavaScript files. What would you like to build?"); return; }
         for(JSONObject m:chatMessages) {
             String role=m.optString("role"); if("system".equals(role))continue;
             addChatBubble(role,m.optString("content"),m.optJSONArray("changes"));
@@ -265,8 +267,8 @@ public class MainActivity extends Activity {
     }
 
     private JSONObject callGroq(String prompt,JSONObject target) throws Exception {
-        JSONObject payload=new JSONObject(); payload.put("model",MODEL); payload.put("temperature",0.35); payload.put("max_tokens",12000);
-        payload.put("reasoning_effort","medium"); payload.put("response_format",new JSONObject().put("type","json_object"));
+        JSONObject payload=new JSONObject(); payload.put("model",MODEL); payload.put("temperature",0.35); payload.put("max_completion_tokens",12000);
+        payload.put("reasoning_effort","medium"); payload.put("include_reasoning",false); payload.put("response_format",new JSONObject().put("type","json_object"));
         JSONArray history=new JSONArray();
         history.put(new JSONObject().put("role","system").put("content",makeSystemPrompt(target)));
         for(int i=0;i<Math.max(0,chatMessages.size()-1);i++){JSONObject m=chatMessages.get(i);if(!"system".equals(m.optString("role")))history.put(m);}
