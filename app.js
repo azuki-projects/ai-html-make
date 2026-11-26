@@ -173,12 +173,12 @@ CURRENT FILES:
 ${JSON.stringify(files)}
 `;
 }
-async function askGroq(userText) {
+async function askGroq(userText, project) {
   const key = localStorage.getItem(API_KEY_STORE);
   if (!key) { $("key-dialog").showModal(); throw new Error("Add your Groq API key to start chatting."); }
-  const p = getProject(); if (!p) throw new Error("Create or open a project first.");
+  const p = project || getProject(); if (!p) throw new Error("Create or open a project first.");
   const history = [{ role: "system", content: systemPrompt(p) }];
-  p.messages.slice(-18).forEach(m => history.push({ role: m.role, content: m.content }));
+  p.messages.slice(-19, -1).forEach(m => history.push({ role: m.role, content: m.content }));
   history.push({ role: "user", content: userText });
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -194,19 +194,24 @@ async function askGroq(userText) {
 async function sendChat(text) {
   const prompt = text.trim(); if (!prompt || state.busy) return;
   if (!localStorage.getItem(API_KEY_STORE)) { $("key-dialog").showModal(); toast("Add your Groq API key first"); return; }
+  const targetProject = getProject();
   addMessage("user", prompt); $("chat-input").value = ""; setBusy(true); setActivity("Thinking...");
   try {
-    const result = await askGroq(prompt); setActivity("Working...");
-    const p = getProject(); const changes = [];
+    const result = await askGroq(prompt, targetProject); setActivity("Working...");
+    const p = targetProject; const changes = [];
     if (Array.isArray(result.changes)) {
       for (const change of result.changes) {
         const path = safePath(change.path);
         if (!path || typeof change.content !== "string") continue;
         const existed = Object.prototype.hasOwnProperty.call(p.files, path);
         p.files[path] = change.content;
-        changes.push({ path, action: existed ? "updated" : "created" });
+        const action = existed ? "updated" : "created";
+        changes.push({ path, action });
         setActivity((existed ? "Updating " : "Creating ") + path + "...");
         renderFiles();
+        await new Promise(resolve => setTimeout(resolve, 280));
+        p.messages.push({ role: "assistant", content: path + " " + action + "...", changes: [{ path, action }], time: Date.now() });
+        persist(); renderChat();
       }
     }
     updateProject();
