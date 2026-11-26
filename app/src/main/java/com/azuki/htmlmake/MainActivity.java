@@ -86,6 +86,7 @@ public class MainActivity extends Activity {
         loadProjects();
         if (projects.isEmpty()) createProjectObject("My first website");
         project = projects.get(0);
+        loadChatForProject();
         buildShell();
         showPage("home");
         if (apiKey.isEmpty()) main.post(this::showApiKeyDialog);
@@ -161,7 +162,7 @@ public class MainActivity extends Activity {
             TextView n=text("▧  "+p.optString("name"),16,Color.WHITE); n.setTypeface(Typeface.DEFAULT_BOLD); card.addView(n);
             JSONObject files=p.optJSONObject("files"); int count=files==null?0:files.length();
             TextView sub=text(count+" files  ·  Tap to open",11,0xFF8A9AA8); sub.setPadding(0,dp(5),0,0); card.addView(sub);
-            card.setOnClickListener(v->{saveEditorIfNeeded();project=p;selectedFile="index.html";saveProjects();showPage("files");});
+            card.setOnClickListener(v->{saveEditorIfNeeded();saveChatForProject();project=p;loadChatForProject();selectedFile="index.html";saveProjects();showPage("files");});
         }
         Button fresh=button("＋ Create another project"); fresh.setOnClickListener(v->newProjectDialog()); projectList.addView(fresh);
     }
@@ -268,7 +269,7 @@ public class MainActivity extends Activity {
         payload.put("reasoning_effort","medium"); payload.put("response_format",new JSONObject().put("type","json_object"));
         JSONArray history=new JSONArray();
         history.put(new JSONObject().put("role","system").put("content",makeSystemPrompt(target)));
-        for(JSONObject m:chatMessages) if(!"system".equals(m.optString("role"))) history.put(m);
+        for(int i=0;i<Math.max(0,chatMessages.size()-1);i++){JSONObject m=chatMessages.get(i);if(!"system".equals(m.optString("role")))history.put(m);}
         history.put(new JSONObject().put("role","user").put("content",prompt));
         payload.put("messages",history);
         HttpURLConnection c=(HttpURLConnection)new URL(ENDPOINT).openConnection();
@@ -286,164 +287,17 @@ public class MainActivity extends Activity {
     }
 
     private String makeSystemPrompt(JSONObject target) {
-        JSONObject files=target.optJSONObject("files"); JSONArray snapshot=new JSONArray();
-        if(files!=null){Iterator<String> it=files.keys();while(it.hasNext()){String path=it.next();snapshot.put(new JSONObject().put("path",path).put("content",files.optString(path).substring(0,Math.min(16000,files.optString(path).length()))));}}
-        return "You are HTML Make, a website-building coding assistant. Work continuously on the current project. Return ONLY valid JSON: {\"message\":\"short natural progress summary\",\"changes\":[{\"path\":\"index.html\",\"content\":\"complete file content\",\"action\":\"created\"}]}. Every changed file must include its complete final content. Use action created or updated. Include all needed HTML/CSS/JS files. Make polished responsive mobile-friendly websites. Keep existing features unless asked to remove them. Main entry is index.html. Never include secrets. If no file changes are needed, use an empty changes array. Current project: "+target.optString("name")+". Existing files: "+snapshot.toString();
-    }
-
-    private JSONObject parseAIJson(String raw) throws Exception {
-        String clean=raw.trim().replaceAll("^\\`\\`\\`(?:json)?\\s*","").replaceAll("\\s*\\`\\`\\`$","");
-        try{return new JSONObject(clean);}catch(Exception ignored){}
-        int a=clean.indexOf("{"),b=clean.lastIndexOf("}");
-        if(a>=0&&b>a)return new JSONObject(clean.substring(a,b+1));
-        return new JSONObject().put("message",raw).put("changes",new JSONArray());
-    }
-
-    private void applyAIChanges(JSONObject result,JSONObject target) {
-        setBusy(false,"Working...");
-        JSONArray edits=result.optJSONArray("changes"); JSONArray events=new JSONArray();
         JSONObject files=target.optJSONObject("files");
-        if(files==null){files=new JSONObject();try{target.put("files",files);}catch(Exception ignored){}}
-        if(edits!=null)for(int i=0;i<edits.length();i++){
-            JSONObject edit=edits.optJSONObject(i); if(edit==null)continue;
-            String path=safePath(edit.optString("path","")); String data=edit.optString("content,null");
-            if(path==null||!edit.has("content"))continue;
-            boolean exists=files.has(path); String action=exists?"updated":"created";
-            try{
-                files.put(path,edit.getString("content"));
-                JSONObject event=new JSONObject().put("path",path).put("action",action); events.put(event);
-                addHistory("assistant",path+" "+action+"...");
-                addChatBubble("assistant",path+" "+action+"...");
-                status.setText("● "+(exists?"Updating ":"Creating ")+path+"...");
-                saveProjects();
-            }catch(Exception ignored){}
+        JSONArray snapshot=new JSONArray();
+        if(files!=null){
+            Iterator<String> it=files.keys();
+            while(it.hasNext()){
+                String path=it.next();
+                String value=files.optString(path,"");
+                try { snapshot.put(new JSONObject().put("path",path).put("content",value.substring(0,Math.min(16000,value.length())))); }
+                catch(Exception ignored) {}
+            }
         }
-        String message=result.optString("message","Finished updating your project.");
-        try{JSONObject m=new JSONObject().put("role","assistant").put("content",message).put("changes",events);chatMessages.add(m);}catch(Exception ignored){}
-        addChatBubble("assistant",message,events);
-        saveProjects(); setBusy(false,"Ready");
-        if("files".equals(currentPage))buildFiles();
-        toast(events.length()+" file(s) changed");
+        return "You are HTML Make, a website-building coding assistant. Work continuously on the current project. Return ONLY valid JSON: {\\\"message\\\":\\\"short natural progress summary\\\",\\\"changes\\\":[{\\\"path\\\":\\\"index.html\\\",\\\"content\\\":\\\"complete file content\\\",\\\"action\\\":\\\"created\\\"}]}. Every changed file must include its complete final content. Use action created or updated. Include all needed HTML/CSS/JS files. Make polished responsive mobile-friendly websites. Keep existing features unless asked to remove them. Main entry is index.html. Never include secrets. If no file changes are needed, use an empty changes array. Current project: "+target.optString("name")+". Existing files: "+snapshot.toString();
     }
 
-    private String safePath(String raw) {
-        String p=raw.trim().replace("\\","/").replaceAll("^/+","");
-        if(p.isEmpty()||p.length()>180||p.contains("../")||p.equals("..")||p.contains("//"))return null;
-        return p;
-    }
-
-    private void setBusy(boolean value,String message) {
-        busy=value;
-        if(status!=null){status.setText("● "+message);status.setTextColor(value?0xFFFFC66D:0xFF8CE6BA);}
-        if(sendButton!=null){sendButton.setEnabled(!value);sendButton.setText(value?"Working...":"Send  ↑");}
-    }
-
-    private void buildPreview() {
-        heading("LIVE WEBSITE","Preview","Your project's index.html output.");
-        LinearLayout bar=horizontal(); bar.setPadding(dp(12),0,dp(12),dp(8));
-        Button refresh=button("↻ Refresh"); refresh.setOnClickListener(v->refreshPreview()); bar.addView(refresh);
-        content.addView(bar);
-        preview=new WebView(this); preview.setBackgroundColor(Color.WHITE);
-        WebSettings settings=preview.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(false);
-        preview.setWebChromeClient(new android.webkit.WebChromeClient());
-        content.addView(preview,new LinearLayout.LayoutParams(-1,0,1)); refreshPreview();
-    }
-
-    private void refreshPreview() {
-        if(preview==null||project==null)return;
-        JSONObject files=project.optJSONObject("files");
-        String html=files==null?"":files.optString("index.html","");
-        if(html.isEmpty())html="<html><body><h2>index.html not found</h2></body></html>";
-        String css=files.optString("style.css",files.optString("styles.css",""));
-        String js=files.optString("app.js",files.optString("script.js",""));
-        if(!css.isEmpty()){
-            String style="<style>"+css+"</style>";
-            if(html.toLowerCase().contains("</head>"))html=html.replaceFirst("(?i)</head>",java.util.regex.Matcher.quoteReplacement(style)+"</head>");
-            else html=style+html;
-        }
-        if(!js.isEmpty()){
-            String script="<script>"+js.replace("</script","<\\/script")+"</script>";
-            if(html.toLowerCase().contains("</body>"))html=html.replaceFirst("(?i)</body>",java.util.regex.Matcher.quoteReplacement(script)+"</body>");
-            else html+=script;
-        }
-        preview.loadDataWithBaseURL("https://htmlmake.local/",html,"text/html","UTF-8",null);
-    }
-
-    private void newProjectDialog() {
-        EditText input=new EditText(this);input.setSingleLine(true);input.setHint("My website");
-        new AlertDialog.Builder(this).setTitle("Create project").setView(input).setNegativeButton("Cancel",null)
-            .setPositiveButton("Create",(d,w)->{String n=input.getText().toString().trim();if(n.isEmpty())n="Untitled project";createProjectObject(n);project=projects.get(0);showPage("chat");}).show();
-    }
-
-    private void newFileDialog() {
-        EditText input=new EditText(this);input.setSingleLine(true);input.setHint("pages/about.html");
-        new AlertDialog.Builder(this).setTitle("Create file").setView(input).setNegativeButton("Cancel",null)
-            .setPositiveButton("Create",(d,w)->{
-                String path=safePath(input.getText().toString());if(path==null){toast("Enter a valid file path");return;}
-                JSONObject files=project.optJSONObject("files");if(files.has(path)){toast("File already exists");return;}
-                try{files.put(path,"");selectedFile=path;saveProjects();showPage("files");toast(path+" created");}catch(Exception ignored){}
-            }).show();
-    }
-
-    private void showApiKeyDialog() {
-        EditText input=new EditText(this);input.setSingleLine(true);input.setHint("gsk_...");
-        input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);input.setText(apiKey);
-        new AlertDialog.Builder(this).setTitle("Groq API key").setMessage("Your key is stored only inside this app on this device.")
-            .setView(input).setNegativeButton("Cancel",null).setNeutralButton("Remove",(d,w)->{apiKey="";getSharedPreferences(PREFS,MODE_PRIVATE).edit().remove(API_KEY).apply();toast("API key removed");})
-            .setPositiveButton("Save",(d,w)->{apiKey=input.getText().toString().trim();getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(API_KEY,apiKey).apply();toast("API key saved");}).show();
-    }
-
-    private void exportProjectZip() {
-        if(editor!=null)saveEditorIfNeeded();
-        pendingZip.clear();JSONObject files=project.optJSONObject("files");if(files==null)return;
-        Iterator<String> it=files.keys();while(it.hasNext()){String p=it.next();pendingZip.add(new GeneratedFile(p,files.optString(p),""));}
-        Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/zip");i.putExtra(Intent.EXTRA_TITLE,project.optString("name","Website").replaceAll("[^A-Za-z0-9_-]","_")+".zip");
-        try{startActivityForResult(i,ZIP_REQUEST);}catch(Exception e){toast("Unable to open ZIP saver");}
-    }
-
-    @Override protected void onActivityResult(int request,int result,Intent data) {
-        super.onActivityResult(request,result,data);
-        if(request!=ZIP_REQUEST||result!=RESULT_OK||data==null)return;
-        Uri uri=data.getData();ArrayList<GeneratedFile> copy=new ArrayList<>(pendingZip);
-        worker.execute(()->{
-            try(OutputStream out=getContentResolver().openOutputStream(uri);ZipOutputStream zip=new ZipOutputStream(out)){
-                for(GeneratedFile f:copy){zip.putNextEntry(new ZipEntry(f.path));zip.write(f.content.getBytes(StandardCharsets.UTF_8));zip.closeEntry();}
-                main.post(()->toast("Project ZIP exported"));
-            }catch(Exception e){main.post(()->toast("ZIP export failed: "+e.getMessage()));}
-        });
-    }
-
-    private void createProjectObject(String name) {
-        try {
-            JSONObject p=new JSONObject();p.put("id",System.currentTimeMillis());p.put("name",name);p.put("files",starterFiles());projects.add(0,p);project=p;saveProjects();
-        }catch(Exception ignored){}
-    }
-
-    private JSONObject starterFiles() throws Exception {
-        JSONObject f=new JSONObject();
-        f.put("index.html","<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>My Website</title>\n<link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n<main class=\"hero\"><span>MY FIRST PROJECT</span><h1>Hello, world.</h1><p>Ask AI to make this website yours.</p><button id=\"hello\">Click me</button></main>\n<script src=\"app.js\"></script>\n</body>\n</html>");
-        f.put("style.css","body{margin:0;min-height:100vh;display:grid;place-items:center;background:#101827;color:#f8fafc;font-family:system-ui,sans-serif}.hero{text-align:center;padding:30px}h1{font-size:clamp(40px,8vw,72px)}p{color:#aab8c8}button{padding:12px 20px;border:0;border-radius:10px;background:#6ee7b7;font-weight:bold}");
-        f.put("app.js","document.getElementById('hello')?.addEventListener('click',()=>alert('Your website is working!'));");
-        return f;
-    }
-
-    private void loadProjects() {
-        projects.clear();
-        try {
-            JSONArray a=new JSONArray(getSharedPreferences(PREFS,MODE_PRIVATE).getString(PROJECTS_KEY,"[]"));
-            for(int i=0;i<a.length();i++)projects.add(a.getJSONObject(i));
-        }catch(Exception ignored){}
-    }
-    private void saveProjects() {
-        try{getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(PROJECTS_KEY,new JSONArray(projects).toString()).apply();}catch(Exception ignored){}
-    }
-    private void addHistory(String role,String value) {
-        try{chatMessages.add(new JSONObject().put("role",role).put("content",value));}catch(Exception ignored){}
-    }
-    private String readAll(InputStream in)throws Exception {
-        StringBuilder b=new StringBuilder();try(BufferedReader r=new BufferedReader(new InputStreamReader(in,StandardCharsets.UTF_8))){String line;while((line=r.readLine())!=null)b.append(line);}return b.toString();
-    }
-    private void toast(String value){Toast.makeText(this,value,Toast.LENGTH_SHORT).show();}
-
-    @Override protected void onDestroy(){worker.shutdownNow();super.onDestroy();}
-}
